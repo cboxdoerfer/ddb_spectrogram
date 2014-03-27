@@ -70,9 +70,9 @@ typedef struct {
 } w_spectrogram_t;
 
 static double *in, *out_real;
-static fftw_complex *out_complex;
+//static fftw_complex *out_complex;
 static fftw_plan p_r2r;
-static fftw_plan p_r2c;
+//static fftw_plan p_r2c;
 
 static int CONFIG_LOG_SCALE = 1;
 static int CONFIG_NUM_COLORS = 7;
@@ -125,7 +125,7 @@ load_config (void)
 void
 do_fft (w_spectrogram_t *w)
 {
-    if (!w->samples || w->buffered < FFT_SIZE/2) {
+    if (!in || !w->data || !out_real || !p_r2r || !w->samples || w->buffered < FFT_SIZE/2) {
         return;
     }
     deadbeef->mutex_lock (w->mutex);
@@ -550,9 +550,9 @@ w_spectrogram_destroy (ddb_gtkui_widget_t *w) {
     if (p_r2r) {
         fftw_destroy_plan (p_r2r);
     }
-    if (p_r2c) {
-        fftw_destroy_plan (p_r2c);
-    }
+    //if (p_r2c) {
+    //    fftw_destroy_plan (p_r2c);
+    //}
     if (in) {
         fftw_free (in);
         in = NULL;
@@ -561,10 +561,10 @@ w_spectrogram_destroy (ddb_gtkui_widget_t *w) {
         fftw_free (out_real);
         out_real = NULL;
     }
-    if (out_complex) {
-        fftw_free (out_complex);
-        out_complex = NULL;
-    }
+    //if (out_complex) {
+    //    fftw_free (out_complex);
+    //    out_complex = NULL;
+    //}
     if (s->drawtimer) {
         g_source_remove (s->drawtimer);
         s->drawtimer = 0;
@@ -661,35 +661,44 @@ spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
     }
     int stride = cairo_image_surface_get_stride (w->surf);
 
-    for (int i = 0; i < a.height; i++)
-    {
-        memmove (data + (i*stride), data + sizeof (uint32_t) + (i*stride), stride - sizeof (uint32_t));
-        float f = 1.0;
-        int index0;
-        int index1;
-        if (CONFIG_LOG_SCALE) {
-            index0 = ftoi (pow (10.0,(i+10)/log_scale));
-            index1 = ftoi (pow (10.0,(i+11)/log_scale));
-        }
-        else {
-            index0 = i * ratio;
-            index1 = (i+1) * ratio;
-        }
+    if (deadbeef->get_output ()->state () == OUTPUT_STATE_PLAYING) {
+        for (int i = 0; i < a.height; i++)
+        {
+            memmove (data + (i*stride), data + sizeof (uint32_t) + (i*stride), stride - sizeof (uint32_t));
+            float f = 1.0;
+            int index0;
+            int index1;
+            int bin0, bin1, bin2;
+            if (CONFIG_LOG_SCALE) {
+                bin0 = ftoi (pow (10.0,(i+9)/log_scale));
+                bin1 = ftoi (pow (10.0,(i+10)/log_scale));
+                bin2 = ftoi (pow (10.0,(i+11)/log_scale));
+                index0 = bin1 - ftoi ((bin1 - bin0)/2.f);
+                index1 = bin1 + ftoi ((bin2 - bin1)/2.f);
+            }
+            else {
+                bin0 = (i-1) * ratio;
+                bin1 = i * ratio;
+                bin2 = (i+1) * ratio;
+                index0 = bin1 - ftoi ((bin1 - bin0)/2.f);
+                index1 = bin1 + ftoi ((bin2 - bin1)/2.f);
+            }
 
-        index0 = CLAMP (index0,0,FFT_SIZE/2-1);
-        index1 = CLAMP (index1,0,FFT_SIZE/2-1);
-        if (i == a.height - 1) {
-            f = w->data[index0];
-        }
-        else {
-            f = spectrogram_get_value (w, index0, index1);
-        }
+            index0 = CLAMP (index0,0,FFT_SIZE/2-1);
+            index1 = CLAMP (index1,0,FFT_SIZE/2-1);
+            if (i == a.height - 1) {
+                f = w->data[index0];
+            }
+            else {
+                f = spectrogram_get_value (w, index0, index1);
+            }
 
-        int x = 10 * log10 (f);
-        x = CLAMP (x, 0, 70);
-        int color_index = GRADIENT_TABLE_SIZE - ftoi (GRADIENT_TABLE_SIZE/70.f * x);
-        color_index = CLAMP (color_index, 0, GRADIENT_TABLE_SIZE-1);
-        _draw_point (data, stride, width-1, height-1-i, w->colors[color_index]);
+            int x = 10 * log10 (f);
+            x = CLAMP (x, 0, 70);
+            int color_index = GRADIENT_TABLE_SIZE - ftoi (GRADIENT_TABLE_SIZE/70.f * x);
+            color_index = CLAMP (color_index, 0, GRADIENT_TABLE_SIZE-1);
+            _draw_point (data, stride, width-1, height-1-i, w->colors[color_index]);
+        }
     }
     cairo_surface_mark_dirty (w->surf);
 
@@ -766,9 +775,9 @@ w_spectrogram_init (ddb_gtkui_widget_t *w) {
     in = fftw_malloc (sizeof (double) * FFT_SIZE);
     memset (in, 0, sizeof (double) * FFT_SIZE);
     out_real = fftw_malloc (sizeof (double) * FFT_SIZE);
-    out_complex = fftw_malloc (sizeof (fftw_complex) * FFT_SIZE);
+    //out_complex = fftw_malloc (sizeof (fftw_complex) * FFT_SIZE);
     p_r2r = fftw_plan_r2r_1d (FFT_SIZE, in, out_real, FFTW_R2HC, FFTW_ESTIMATE);
-    p_r2c = fftw_plan_dft_r2c_1d (FFT_SIZE, in, out_complex, FFTW_ESTIMATE);
+    //p_r2c = fftw_plan_dft_r2c_1d (FFT_SIZE, in, out_complex, FFTW_ESTIMATE);
     s->drawtimer = g_timeout_add (33, w_spectrogram_draw_cb, w);
     deadbeef->mutex_unlock (s->mutex);
 }

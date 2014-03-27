@@ -38,6 +38,7 @@
 //#define FFT_SIZE 32768
 #define FFT_SIZE 8192
 
+#define     CONFSTR_MS_LOG_SCALE              "spectrogram.log_scale"
 #define     CONFSTR_MS_COLOR_GRADIENT_00      "spectrogram.color.gradient_00"
 #define     CONFSTR_MS_COLOR_GRADIENT_01      "spectrogram.color.gradient_01"
 #define     CONFSTR_MS_COLOR_GRADIENT_02      "spectrogram.color.gradient_02"
@@ -73,12 +74,14 @@ static fftw_complex *out_complex;
 static fftw_plan p_r2r;
 static fftw_plan p_r2c;
 
+static int CONFIG_LOG_SCALE = 1;
 static int CONFIG_NUM_COLORS = 7;
 static GdkColor CONFIG_GRADIENT_COLORS[7];
 
 static void
 save_config (void)
 {
+    deadbeef->conf_set_int (CONFSTR_MS_LOG_SCALE, CONFIG_LOG_SCALE);
     char color[100];
     snprintf (color, sizeof (color), "%d %d %d", CONFIG_GRADIENT_COLORS[0].red, CONFIG_GRADIENT_COLORS[0].green, CONFIG_GRADIENT_COLORS[0].blue);
     deadbeef->conf_set_str (CONFSTR_MS_COLOR_GRADIENT_00, color);
@@ -100,6 +103,7 @@ static void
 load_config (void)
 {
     deadbeef->conf_lock ();
+    CONFIG_LOG_SCALE = deadbeef->conf_get_int (CONFSTR_MS_LOG_SCALE,          1);
     const char *color;
     color = deadbeef->conf_get_str_fast (CONFSTR_MS_COLOR_GRADIENT_00,        "65535 0 0");
     sscanf (color, "%hd %hd %hd", &(CONFIG_GRADIENT_COLORS[0].red), &(CONFIG_GRADIENT_COLORS[0].green), &(CONFIG_GRADIENT_COLORS[0].blue));
@@ -318,6 +322,7 @@ on_button_config (GtkMenuItem *menuitem, gpointer user_data)
     GtkWidget *color_gradient_06;
     GtkWidget *num_colors_label;
     GtkWidget *num_colors;
+    GtkWidget *log_scale;
     GtkWidget *dialog_action_area13;
     GtkWidget *applybutton1;
     GtkWidget *cancelbutton1;
@@ -413,6 +418,10 @@ on_button_config (GtkMenuItem *menuitem, gpointer user_data)
     gtk_box_pack_start (GTK_BOX (vbox01), hbox02, FALSE, FALSE, 0);
     gtk_container_set_border_width (GTK_CONTAINER (hbox01), 12);
 
+    log_scale = gtk_check_button_new_with_label ("Log scale");
+    gtk_widget_show (log_scale);
+    gtk_box_pack_start (GTK_BOX (hbox02), log_scale, FALSE, FALSE, 0);
+
     dialog_action_area13 = gtk_dialog_get_action_area (GTK_DIALOG (spectrogram_properties));
     gtk_widget_show (dialog_action_area13);
     gtk_button_box_set_layout (GTK_BUTTON_BOX (dialog_action_area13), GTK_BUTTONBOX_END);
@@ -432,6 +441,7 @@ on_button_config (GtkMenuItem *menuitem, gpointer user_data)
     gtk_dialog_add_action_widget (GTK_DIALOG (spectrogram_properties), okbutton1, GTK_RESPONSE_OK);
     gtk_widget_set_can_default (okbutton1, TRUE);
 
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (log_scale), CONFIG_LOG_SCALE);
     gtk_spin_button_set_value (GTK_SPIN_BUTTON (num_colors), CONFIG_NUM_COLORS);
     gtk_color_button_set_color (GTK_COLOR_BUTTON (color_gradient_00), &(CONFIG_GRADIENT_COLORS[0]));
     gtk_color_button_set_color (GTK_COLOR_BUTTON (color_gradient_01), &(CONFIG_GRADIENT_COLORS[1]));
@@ -452,6 +462,7 @@ on_button_config (GtkMenuItem *menuitem, gpointer user_data)
             gtk_color_button_get_color (GTK_COLOR_BUTTON (color_gradient_05), &CONFIG_GRADIENT_COLORS[5]);
             gtk_color_button_get_color (GTK_COLOR_BUTTON (color_gradient_06), &CONFIG_GRADIENT_COLORS[6]);
 
+            CONFIG_LOG_SCALE = gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (log_scale));
             CONFIG_NUM_COLORS = gtk_spin_button_get_value_as_int (GTK_SPIN_BUTTON (num_colors));
             switch (CONFIG_NUM_COLORS) {
                 case 1:
@@ -654,8 +665,16 @@ spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
     {
         memmove (data + (i*stride), data + sizeof (uint32_t) + (i*stride), stride - sizeof (uint32_t));
         float f = 1.0;
-        int index0 = ftoi (pow (10.0,(i+10)/log_scale));
-        int index1 = ftoi (pow (10.0,(i+11)/log_scale));
+        int index0;
+        int index1;
+        if (CONFIG_LOG_SCALE) {
+            index0 = ftoi (pow (10.0,(i+10)/log_scale));
+            index1 = ftoi (pow (10.0,(i+11)/log_scale));
+        }
+        else {
+            index0 = i * ratio;
+            index1 = (i+1) * ratio;
+        }
 
         index0 = CLAMP (index0,0,FFT_SIZE/2-1);
         index1 = CLAMP (index1,0,FFT_SIZE/2-1);

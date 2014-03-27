@@ -795,7 +795,7 @@ spectrogram_connect (void)
         if (gtkui_plugin->gui.plugin.version_major == 2) {
             //printf ("fb api2\n");
             // 0.6+, use the new widget API
-            gtkui_plugin->w_reg_widget ("Spectrogram", DDB_WF_SINGLE_INSTANCE, w_spectrogram_create, "spectrogram", NULL);
+            gtkui_plugin->w_reg_widget ("Spectrogram", 0, w_spectrogram_create, "spectrogram", NULL);
             return 0;
         }
     }

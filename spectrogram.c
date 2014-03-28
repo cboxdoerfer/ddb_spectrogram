@@ -60,6 +60,8 @@ typedef struct {
     guint drawtimer;
     double *data;
     double hanning[FFT_SIZE];
+    double *in, *out_real;
+    fftw_plan p_r2r;
     uint32_t colors[GRADIENT_TABLE_SIZE];
     double *samples;
     float samplerate;
@@ -69,9 +71,7 @@ typedef struct {
     cairo_surface_t *surf;
 } w_spectrogram_t;
 
-static double *in, *out_real;
 //static fftw_complex *out_complex;
-static fftw_plan p_r2r;
 //static fftw_plan p_r2c;
 
 static int CONFIG_LOG_SCALE = 1;
@@ -132,35 +132,17 @@ do_fft (w_spectrogram_t *w)
     //double real,imag;
 
     for (int i = 0; i < FFT_SIZE; i++) {
-        in[i] = (double)w->samples[i] * w->hanning[i];
+        w->in[i] = (double)w->samples[i] * w->hanning[i];
     }
     deadbeef->mutex_unlock (w->mutex);
-    fftw_execute (p_r2r);
+    fftw_execute (w->p_r2r);
     //fftw_execute (p_r2c);
     for (int i = 0; i < FFT_SIZE/2; i++)
     {
         //real = out[i][0];
         //imag = out[i][1];
         //w->data[i] = (real*real + imag*imag);
-        w->data[i] = out_real[i]*out_real[i] + out_real[FFT_SIZE-i-1]*out_real[FFT_SIZE-i-1];
-    }
-}
-
-static inline void
-_draw_vline (uint8_t *data, int stride, int x0, int y0, int y1, uint32_t color) {
-    if (y0 > y1) {
-        int tmp = y0;
-        y0 = y1;
-        y1 = tmp;
-        y1--;
-    }
-    else if (y0 < y1) {
-        y0++;
-    }
-    while (y0 <= y1) {
-        uint32_t *ptr = (uint32_t*)&data[y0*stride+x0*4];
-        *ptr = color;
-        y0++;
+        w->data[i] = w->out_real[i]*w->out_real[i] + w->out_real[FFT_SIZE-i-1]*w->out_real[FFT_SIZE-i-1];
     }
 }
 
@@ -168,66 +150,6 @@ static inline void
 _draw_point (uint8_t *data, int stride, int x0, int y0, uint32_t color) {
     uint32_t *ptr = (uint32_t*)&data[y0*stride+x0*4];
     *ptr = color;
-}
-
-static inline void
-_draw_hline (uint8_t *data, int stride, int x0, int y0, int x1) {
-    uint32_t *ptr = (uint32_t*)&data[y0*stride+x0*4];
-    while (x0 <= x1) {
-        *ptr++ = 0xff666666;
-        x0++;
-    }
-}
-
-static inline void
-_draw_bar (uint8_t *data, int stride, int x0, int y0, int w, int h, uint32_t color) {
-    int y1 = y0+h-1;
-    int x1 = x0+w-1;
-    uint32_t *ptr = (uint32_t*)&data[y0*stride+x0*4];
-    while (y0 <= y1) {
-        int x = x0;
-        while (x++ <= x1) {
-            *ptr++ = color;
-        }
-        y0++;
-        ptr += stride/4-w;
-    }
-}
-
-static inline void
-_draw_bar_gradient_v (gpointer user_data, uint8_t *data, int stride, int x0, int y0, int w, int h, int total_h) {
-    w_spectrogram_t *s = user_data;
-    int y1 = y0+h-1;
-    int x1 = x0+w-1;
-    uint32_t *ptr = (uint32_t*)&data[y0*stride+x0*4];
-    while (y0 <= y1) {
-        int x = x0;
-        int index = ftoi(((double)y0/(double)total_h) * (GRADIENT_TABLE_SIZE - 1));
-        index = CLAMP (index, 0, GRADIENT_TABLE_SIZE - 1);
-        while (x++ <= x1) {
-            *ptr++ = s->colors[index];
-        }
-        y0++;
-        ptr += stride/4-w;
-    }
-}
-
-static inline void
-_draw_bar_gradient_h (gpointer user_data, uint8_t *data, int stride, int x0, int y0, int w, int h, int total_w) {
-    w_spectrogram_t *s = user_data;
-    int y1 = y0+h-1;
-    int x1 = x0+w-1;
-    uint32_t *ptr = (uint32_t*)&data[y0*stride+x0*4];
-    while (y0 <= y1) {
-        int x = x0;
-        while (x++ <= x1) {
-            int index = ftoi(((double)x/(double)total_w) * (GRADIENT_TABLE_SIZE - 1));
-            index = CLAMP (index, 0, GRADIENT_TABLE_SIZE - 1);
-            *ptr++ = s->colors[index];
-        }
-        y0++;
-        ptr += stride/4-w;
-    }
 }
 
 /* based on Delphi function by Witold J.Janik */
@@ -547,19 +469,19 @@ w_spectrogram_destroy (ddb_gtkui_widget_t *w) {
         free (s->samples);
         s->samples = NULL;
     }
-    if (p_r2r) {
-        fftw_destroy_plan (p_r2r);
+    if (s->p_r2r) {
+        fftw_destroy_plan (s->p_r2r);
     }
     //if (p_r2c) {
     //    fftw_destroy_plan (p_r2c);
     //}
-    if (in) {
-        fftw_free (in);
-        in = NULL;
+    if (s->in) {
+        fftw_free (s->in);
+        s->in = NULL;
     }
-    if (out_real) {
-        fftw_free (out_real);
-        out_real = NULL;
+    if (s->out_real) {
+        fftw_free (s->out_real);
+        s->out_real = NULL;
     }
     //if (out_complex) {
     //    fftw_free (out_complex);
@@ -772,12 +694,12 @@ w_spectrogram_init (ddb_gtkui_widget_t *w) {
     }
     s->samplerate = 44100.0;
     create_gradient_table (s, CONFIG_GRADIENT_COLORS, CONFIG_NUM_COLORS);
-    in = fftw_malloc (sizeof (double) * FFT_SIZE);
-    memset (in, 0, sizeof (double) * FFT_SIZE);
-    out_real = fftw_malloc (sizeof (double) * FFT_SIZE);
-    //out_complex = fftw_malloc (sizeof (fftw_complex) * FFT_SIZE);
-    p_r2r = fftw_plan_r2r_1d (FFT_SIZE, in, out_real, FFTW_R2HC, FFTW_ESTIMATE);
-    //p_r2c = fftw_plan_dft_r2c_1d (FFT_SIZE, in, out_complex, FFTW_ESTIMATE);
+    s->in = fftw_malloc (sizeof (double) * FFT_SIZE);
+    memset (s->in, 0, sizeof (double) * FFT_SIZE);
+    s->out_real = fftw_malloc (sizeof (double) * FFT_SIZE);
+    //s->out_complex = fftw_malloc (sizeof (fftw_complex) * FFT_SIZE);
+    s->p_r2r = fftw_plan_r2r_1d (FFT_SIZE, s->in, s->out_real, FFTW_R2HC, FFTW_ESTIMATE);
+    //s->p_r2c = fftw_plan_dft_r2c_1d (FFT_SIZE, s->in, s->out_complex, FFTW_ESTIMATE);
     s->drawtimer = g_timeout_add (33, w_spectrogram_draw_cb, w);
     deadbeef->mutex_unlock (s->mutex);
 }
@@ -823,7 +745,7 @@ spectrogram_connect (void)
         if (gtkui_plugin->gui.plugin.version_major == 2) {
             //printf ("fb api2\n");
             // 0.6+, use the new widget API
-            gtkui_plugin->w_reg_widget ("Spectrogram", DDB_WF_SINGLE_INSTANCE, w_spectrogram_create, "spectrogram", NULL);
+            gtkui_plugin->w_reg_widget ("Spectrogram", 0, w_spectrogram_create, "spectrogram", NULL);
             return 0;
         }
     }

@@ -517,16 +517,14 @@ spectrogram_wavedata_listener (void *ctx, ddb_audio_data_t *data) {
     deadbeef->mutex_lock (w->mutex);
     w->samplerate = (float)data->fmt->samplerate;
     int nsamples = data->nframes;
-    float ratio = data->fmt->samplerate / 44100.f;
-    int size = nsamples / ratio;
-    int sz = MIN (FFT_SIZE, size);
+    int sz = MIN (FFT_SIZE, nsamples);
     int n = FFT_SIZE - sz;
     if (w->buffered >= FFT_SIZE && w->samples) {
         memmove (w->samples, w->samples + sz, (FFT_SIZE - sz)*sizeof (double));
     }
 
     float pos = 0;
-    for (int i = 0; i < sz && pos < nsamples; i++, pos += ratio) {
+    for (int i = 0; i < sz && pos < nsamples; i++, pos ++) {
         w->samples[n+i] = -1000.0;
         for (int j = 0; j < data->fmt->channels; j++) {
             w->samples[n + i] = MAX (w->samples[n + i], data->data[ftoi (pos * data->fmt->channels) + j]);

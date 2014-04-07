@@ -33,9 +33,7 @@
 
 #include "fastftoi.h"
 
-//#define FFT_SIZE 16384
 #define GRADIENT_TABLE_SIZE 2048
-//#define FFT_SIZE 32768
 #define FFT_SIZE 8192
 
 #define     CONFSTR_MS_LOG_SCALE              "spectrogram.log_scale"
@@ -132,7 +130,7 @@ do_fft (w_spectrogram_t *w)
     //double real,imag;
 
     for (int i = 0; i < FFT_SIZE; i++) {
-        w->in[i] = (double)w->samples[i] * w->hanning[i];
+        w->in[i] = w->samples[i] * w->hanning[i];
     }
     deadbeef->mutex_unlock (w->mutex);
     fftw_execute (w->p_r2r);
@@ -519,9 +517,7 @@ spectrogram_wavedata_listener (void *ctx, ddb_audio_data_t *data) {
     int nsamples = data->nframes;
     int sz = MIN (FFT_SIZE, nsamples);
     int n = FFT_SIZE - sz;
-    if (w->buffered >= FFT_SIZE && w->samples) {
-        memmove (w->samples, w->samples + sz, (FFT_SIZE - sz)*sizeof (double));
-    }
+    memmove (w->samples, w->samples + sz, (FFT_SIZE - sz)*sizeof (double));
 
     float pos = 0;
     for (int i = 0; i < sz && pos < nsamples; i++, pos ++) {
@@ -536,7 +532,7 @@ spectrogram_wavedata_listener (void *ctx, ddb_audio_data_t *data) {
     }
 }
 
-static inline  float
+static inline float
 spectrogram_get_value (gpointer user_data, int start, int end)
 {
     w_spectrogram_t *w = user_data;
@@ -545,6 +541,15 @@ spectrogram_get_value (gpointer user_data, int start, int end)
         value = MAX (w->data[i],value);
     }
     return value;
+}
+
+static inline float
+cosine_interpolate (float y1, float y2, float mu)
+{
+    float mu2;
+
+    mu2 = (1 - cos (mu * M_PI))/2;
+    return (y1 * (1 - mu2) + y2 * mu2);
 }
 
 static gboolean
@@ -562,7 +567,8 @@ spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
     height = a.height;
     int ratio = ftoi (FFT_SIZE/(a.height*2));
     ratio = CLAMP (ratio,0,1023);
-    float log_scale = a.height/(log10(FFT_SIZE/2));
+    float log_scale = (log2(w->samplerate/2)-log2(25.))/(a.height);
+    float freq_res = w->samplerate / FFT_SIZE;
 
     // start drawing
     if (!w->surf || cairo_image_surface_get_width (w->surf) != a.width || cairo_image_surface_get_height (w->surf) != a.height) {
@@ -582,27 +588,32 @@ spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
     int stride = cairo_image_surface_get_stride (w->surf);
 
     if (deadbeef->get_output ()->state () == OUTPUT_STATE_PLAYING) {
+        for (int i = 0; i < a.height; i++) {
+            // scrolling: move line i 1px to the left
+            memmove (data + (i*stride), data + sizeof (uint32_t) + (i*stride), stride - sizeof (uint32_t));
+        }
+
         for (int i = 0; i < a.height; i++)
         {
-            memmove (data + (i*stride), data + sizeof (uint32_t) + (i*stride), stride - sizeof (uint32_t));
             float f = 1.0;
             int index0;
             int index1;
             int bin0, bin1, bin2;
             if (CONFIG_LOG_SCALE) {
-                bin0 = ftoi (pow (10.0,(i+9)/log_scale));
-                bin1 = ftoi (pow (10.0,(i+10)/log_scale));
-                bin2 = ftoi (pow (10.0,(i+11)/log_scale));
-                index0 = bin1 - ftoi ((bin1 - bin0)/2.f);
-                index1 = bin1 + ftoi ((bin2 - bin1)/2.f);
+                bin0 = ftoi (pow(2.,((float)i-1) * log_scale + log2(25.)) / freq_res);
+                bin1 = ftoi (pow(2.,((float)i) * log_scale + log2(25.)) / freq_res);
+                bin2 = ftoi (pow(2.,((float)i+1) * log_scale + log2(25.)) / freq_res);
             }
             else {
                 bin0 = (i-1) * ratio;
                 bin1 = i * ratio;
                 bin2 = (i+1) * ratio;
-                index0 = bin1 - ftoi ((bin1 - bin0)/2.f);
-                index1 = bin1 + ftoi ((bin2 - bin1)/2.f);
             }
+
+            index0 = bin1 - ftoi ((bin1 - bin0)/2.f);
+            if (index0 == bin0) index0 = bin1;
+            index1 = bin1 + ftoi ((bin2 - bin1)/2.f);
+            if (index1 == bin2) index1 = bin1;
 
             index0 = CLAMP (index0,0,FFT_SIZE/2-1);
             index1 = CLAMP (index1,0,FFT_SIZE/2-1);

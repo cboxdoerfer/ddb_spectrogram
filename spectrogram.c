@@ -555,11 +555,11 @@ cosine_interpolate (float y1, float y2, float mu)
 static gboolean
 spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
     w_spectrogram_t *w = user_data;
-    if (!w->samples) {
-        return FALSE;
-    }
     GtkAllocation a;
     gtk_widget_get_allocation (widget, &a);
+    if (!w->samples || a.height < 1) {
+        return FALSE;
+    }
 
     do_fft (w);
     int width, height;
@@ -569,6 +569,10 @@ spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
     ratio = CLAMP (ratio,0,1023);
     float log_scale = (log2(w->samplerate/2)-log2(25.))/(a.height);
     float freq_res = w->samplerate / FFT_SIZE;
+
+    int low_res_end = 0;
+    int *log_index = (int *)malloc (sizeof (int) * height);
+    memset (log_index, 0, sizeof (int) * height);
 
     // start drawing
     if (!w->surf || cairo_image_surface_get_width (w->surf) != a.width || cairo_image_surface_get_height (w->surf) != a.height) {
@@ -589,6 +593,10 @@ spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
 
     if (deadbeef->get_output ()->state () == OUTPUT_STATE_PLAYING) {
         for (int i = 0; i < a.height; i++) {
+            log_index[i] = ftoi (pow(2.,((float)i) * log_scale + log2(25.)) / freq_res);
+            if (i > 0 && log_index[i-1] == log_index [i]) {
+                low_res_end = i;
+            }
             // scrolling: move line i 1px to the left
             memmove (data + (i*stride), data + sizeof (uint32_t) + (i*stride), stride - sizeof (uint32_t));
         }
@@ -600,9 +608,9 @@ spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
             int index1;
             int bin0, bin1, bin2;
             if (CONFIG_LOG_SCALE) {
-                bin0 = ftoi (pow(2.,((float)i-1) * log_scale + log2(25.)) / freq_res);
-                bin1 = ftoi (pow(2.,((float)i) * log_scale + log2(25.)) / freq_res);
-                bin2 = ftoi (pow(2.,((float)i+1) * log_scale + log2(25.)) / freq_res);
+                bin0 = log_index[CLAMP (i-1,0,height-1)];
+                bin1 = log_index[i];
+                bin2 = log_index[CLAMP (i+1,0,height-1)];
             }
             else {
                 bin0 = (i-1) * ratio;
@@ -625,6 +633,25 @@ spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
             }
 
             int x = 10 * log10 (f);
+
+            // interpolate
+            if (i <= low_res_end && CONFIG_LOG_SCALE) {
+                int j = 0;
+                // find index of next value
+                while (i+j < height && log_index[i+j] == log_index[i]) {
+                    j++;
+                }
+                float v0 = x;
+                float v1 = 10 * log10 (w->data[log_index[i+j]]);
+
+                int k = 0;
+                while ((k+i) >= 0 && log_index[k+i] == log_index[i]) {
+                    j++;
+                    k--;
+                }
+                x = ftoi (cosine_interpolate (v0,v1,(1.0/j) * ((-1) * k)));
+            }
+
             x = CLAMP (x, 0, 70);
             int color_index = GRADIENT_TABLE_SIZE - ftoi (GRADIENT_TABLE_SIZE/70.f * x);
             color_index = CLAMP (color_index, 0, GRADIENT_TABLE_SIZE-1);
@@ -639,6 +666,10 @@ spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
     cairo_fill (cr);
     cairo_restore (cr);
 
+    if (log_index) {
+        free (log_index);
+        log_index = NULL;
+    }
     return FALSE;
 }
 

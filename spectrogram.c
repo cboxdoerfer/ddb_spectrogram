@@ -537,8 +537,11 @@ static inline float
 spectrogram_get_value (gpointer user_data, int start, int end)
 {
     w_spectrogram_t *w = user_data;
+    if (start >= end) {
+        return w->data[end];
+    }
     float value = 0.0;
-    for (int i = start; i <= end; i++) {
+    for (int i = start; i < end; i++) {
         value = MAX (w->data[i],value);
     }
     return value;
@@ -619,7 +622,7 @@ spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
                 bin2 = (i+1) * ratio;
             }
 
-            index0 = bin1 - ftoi ((bin1 - bin0)/2.f);
+            index0 = bin0 + ftoi ((bin1 - bin0)/2.f);
             if (index0 == bin0) index0 = bin1;
             index1 = bin1 + ftoi ((bin2 - bin1)/2.f);
             if (index1 == bin2) index1 = bin1;

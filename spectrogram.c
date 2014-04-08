@@ -657,9 +657,9 @@ spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
             }
 
             // TODO: get rid of hardcoding 
-            x += 37;
-            x = CLAMP (x, 0, 100);
-            int color_index = GRADIENT_TABLE_SIZE - ftoi (GRADIENT_TABLE_SIZE/100.f * x);
+            x += 17;
+            x = CLAMP (x, 0, 80);
+            int color_index = GRADIENT_TABLE_SIZE - ftoi (GRADIENT_TABLE_SIZE/80.f * x);
             color_index = CLAMP (color_index, 0, GRADIENT_TABLE_SIZE-1);
             _draw_point (data, stride, width-1, height-1-i, w->colors[color_index]);
         }

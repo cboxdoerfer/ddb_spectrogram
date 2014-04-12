@@ -19,4 +19,4 @@ make
 
 ## Screenshot
 
-![](http://i.imgur.com/Ff8x6gF.png)
+![](http://i.imgur.com/UTEVqr3.png)

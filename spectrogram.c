@@ -39,6 +39,7 @@
 
 #define     CONFSTR_SP_LOG_SCALE              "spectrogram.log_scale"
 #define     CONFSTR_SP_REFRESH_INTERVAL       "spectrogram.refresh_interval"
+#define     CONFSTR_SP_DB_RANGE               "spectrogram.db_range"
 #define     CONFSTR_SP_COLOR_GRADIENT_00      "spectrogram.color.gradient_00"
 #define     CONFSTR_SP_COLOR_GRADIENT_01      "spectrogram.color.gradient_01"
 #define     CONFSTR_SP_COLOR_GRADIENT_02      "spectrogram.color.gradient_02"
@@ -79,6 +80,7 @@ typedef struct {
 
 
 static int CONFIG_LOG_SCALE = 1;
+static int CONFIG_DB_RANGE = 70;
 static int CONFIG_NUM_COLORS = 7;
 static int CONFIG_REFRESH_INTERVAL = 25;
 static GdkColor CONFIG_GRADIENT_COLORS[7];
@@ -87,6 +89,7 @@ static void
 save_config (void)
 {
     deadbeef->conf_set_int (CONFSTR_SP_LOG_SCALE, CONFIG_LOG_SCALE);
+    deadbeef->conf_set_int (CONFSTR_SP_DB_RANGE, CONFIG_DB_RANGE);
     deadbeef->conf_set_int (CONFSTR_SP_REFRESH_INTERVAL, CONFIG_REFRESH_INTERVAL);
     char color[100];
     snprintf (color, sizeof (color), "%d %d %d", CONFIG_GRADIENT_COLORS[0].red, CONFIG_GRADIENT_COLORS[0].green, CONFIG_GRADIENT_COLORS[0].blue);
@@ -110,6 +113,7 @@ load_config (void)
 {
     deadbeef->conf_lock ();
     CONFIG_LOG_SCALE = deadbeef->conf_get_int (CONFSTR_SP_LOG_SCALE,                1);
+    CONFIG_DB_RANGE = deadbeef->conf_get_int (CONFSTR_SP_DB_RANGE,                 70);
     CONFIG_REFRESH_INTERVAL = deadbeef->conf_get_int (CONFSTR_SP_REFRESH_INTERVAL, 25);
     const char *color;
     color = deadbeef->conf_get_str_fast (CONFSTR_SP_COLOR_GRADIENT_00,        "65535 0 0");
@@ -239,7 +243,8 @@ on_button_config (GtkMenuItem *menuitem, gpointer user_data)
     GtkWidget *vbox01;
     GtkWidget *vbox02;
     GtkWidget *hbox01;
-    GtkWidget *hbox02;
+    //GtkWidget *hbox02;
+    GtkWidget *hbox03;
     GtkWidget *color_label;
     GtkWidget *color_frame;
     GtkWidget *color_gradient_00;
@@ -252,6 +257,8 @@ on_button_config (GtkMenuItem *menuitem, gpointer user_data)
     GtkWidget *num_colors_label;
     GtkWidget *num_colors;
     GtkWidget *log_scale;
+    GtkWidget *db_range_label0;
+    GtkWidget *db_range;
     GtkWidget *dialog_action_area13;
     GtkWidget *applybutton1;
     GtkWidget *cancelbutton1;
@@ -342,14 +349,27 @@ on_button_config (GtkMenuItem *menuitem, gpointer user_data)
     gtk_box_pack_start (GTK_BOX (hbox01), vbox01, FALSE, FALSE, 0);
     gtk_container_set_border_width (GTK_CONTAINER (vbox01), 12);
 
-    hbox02 = gtk_hbox_new (FALSE, 8);
-    gtk_widget_show (hbox02);
-    gtk_box_pack_start (GTK_BOX (vbox01), hbox02, FALSE, FALSE, 0);
-    gtk_container_set_border_width (GTK_CONTAINER (hbox01), 12);
+    //hbox02 = gtk_hbox_new (FALSE, 8);
+    //gtk_widget_show (hbox02);
+    //gtk_box_pack_start (GTK_BOX (vbox01), hbox02, FALSE, FALSE, 0);
+    //gtk_container_set_border_width (GTK_CONTAINER (hbox01), 12);
+
+    hbox03 = gtk_hbox_new (FALSE, 8);
+    gtk_widget_show (hbox03);
+    gtk_box_pack_start (GTK_BOX (vbox01), hbox03, FALSE, FALSE, 0);
+
+    db_range_label0 = gtk_label_new (NULL);
+    gtk_label_set_markup (GTK_LABEL (db_range_label0),"dB range:");
+    gtk_widget_show (db_range_label0);
+    gtk_box_pack_start (GTK_BOX (hbox03), db_range_label0, FALSE, TRUE, 0);
+
+    db_range = gtk_spin_button_new_with_range (50,120,10);
+    gtk_widget_show (db_range);
+    gtk_box_pack_start (GTK_BOX (hbox03), db_range, TRUE, TRUE, 0);
 
     log_scale = gtk_check_button_new_with_label ("Log scale");
     gtk_widget_show (log_scale);
-    gtk_box_pack_start (GTK_BOX (hbox02), log_scale, FALSE, FALSE, 0);
+    gtk_box_pack_start (GTK_BOX (vbox01), log_scale, FALSE, FALSE, 0);
 
     dialog_action_area13 = gtk_dialog_get_action_area (GTK_DIALOG (spectrogram_properties));
     gtk_widget_show (dialog_action_area13);
@@ -372,6 +392,7 @@ on_button_config (GtkMenuItem *menuitem, gpointer user_data)
 
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (log_scale), CONFIG_LOG_SCALE);
     gtk_spin_button_set_value (GTK_SPIN_BUTTON (num_colors), CONFIG_NUM_COLORS);
+    gtk_spin_button_set_value (GTK_SPIN_BUTTON (db_range), CONFIG_DB_RANGE);
     gtk_color_button_set_color (GTK_COLOR_BUTTON (color_gradient_00), &(CONFIG_GRADIENT_COLORS[0]));
     gtk_color_button_set_color (GTK_COLOR_BUTTON (color_gradient_01), &(CONFIG_GRADIENT_COLORS[1]));
     gtk_color_button_set_color (GTK_COLOR_BUTTON (color_gradient_02), &(CONFIG_GRADIENT_COLORS[2]));
@@ -392,6 +413,7 @@ on_button_config (GtkMenuItem *menuitem, gpointer user_data)
             gtk_color_button_get_color (GTK_COLOR_BUTTON (color_gradient_06), &CONFIG_GRADIENT_COLORS[6]);
 
             CONFIG_LOG_SCALE = gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (log_scale));
+            CONFIG_DB_RANGE = gtk_spin_button_get_value_as_int (GTK_SPIN_BUTTON (db_range));
             CONFIG_NUM_COLORS = gtk_spin_button_get_value_as_int (GTK_SPIN_BUTTON (num_colors));
             switch (CONFIG_NUM_COLORS) {
                 case 1:
@@ -665,9 +687,9 @@ spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
             }
 
             // TODO: get rid of hardcoding 
-            x += 17;
-            x = CLAMP (x, 0, 80);
-            int color_index = GRADIENT_TABLE_SIZE - ftoi (GRADIENT_TABLE_SIZE/80.f * x);
+            x += CONFIG_DB_RANGE - 63;
+            x = CLAMP (x, 0, CONFIG_DB_RANGE);
+            int color_index = GRADIENT_TABLE_SIZE - ftoi (GRADIENT_TABLE_SIZE/(float)CONFIG_DB_RANGE * x);
             color_index = CLAMP (color_index, 0, GRADIENT_TABLE_SIZE-1);
             _draw_point (data, stride, width-1, height-1-i, w->colors[color_index]);
         }

@@ -37,14 +37,15 @@
 #define FFT_SIZE 8192
 #define MAX_HEIGHT 4096
 
-#define     CONFSTR_MS_LOG_SCALE              "spectrogram.log_scale"
-#define     CONFSTR_MS_COLOR_GRADIENT_00      "spectrogram.color.gradient_00"
-#define     CONFSTR_MS_COLOR_GRADIENT_01      "spectrogram.color.gradient_01"
-#define     CONFSTR_MS_COLOR_GRADIENT_02      "spectrogram.color.gradient_02"
-#define     CONFSTR_MS_COLOR_GRADIENT_03      "spectrogram.color.gradient_03"
-#define     CONFSTR_MS_COLOR_GRADIENT_04      "spectrogram.color.gradient_04"
-#define     CONFSTR_MS_COLOR_GRADIENT_05      "spectrogram.color.gradient_05"
-#define     CONFSTR_MS_COLOR_GRADIENT_06      "spectrogram.color.gradient_06"
+#define     CONFSTR_SP_LOG_SCALE              "spectrogram.log_scale"
+#define     CONFSTR_SP_REFRESH_INTERVAL       "spectrogram.refresh_interval"
+#define     CONFSTR_SP_COLOR_GRADIENT_00      "spectrogram.color.gradient_00"
+#define     CONFSTR_SP_COLOR_GRADIENT_01      "spectrogram.color.gradient_01"
+#define     CONFSTR_SP_COLOR_GRADIENT_02      "spectrogram.color.gradient_02"
+#define     CONFSTR_SP_COLOR_GRADIENT_03      "spectrogram.color.gradient_03"
+#define     CONFSTR_SP_COLOR_GRADIENT_04      "spectrogram.color.gradient_04"
+#define     CONFSTR_SP_COLOR_GRADIENT_05      "spectrogram.color.gradient_05"
+#define     CONFSTR_SP_COLOR_GRADIENT_06      "spectrogram.color.gradient_06"
 
 /* Global variables */
 static DB_misc_t            plugin;
@@ -79,48 +80,51 @@ typedef struct {
 
 static int CONFIG_LOG_SCALE = 1;
 static int CONFIG_NUM_COLORS = 7;
+static int CONFIG_REFRESH_INTERVAL = 25;
 static GdkColor CONFIG_GRADIENT_COLORS[7];
 
 static void
 save_config (void)
 {
-    deadbeef->conf_set_int (CONFSTR_MS_LOG_SCALE, CONFIG_LOG_SCALE);
+    deadbeef->conf_set_int (CONFSTR_SP_LOG_SCALE, CONFIG_LOG_SCALE);
+    deadbeef->conf_set_int (CONFSTR_SP_REFRESH_INTERVAL, CONFIG_REFRESH_INTERVAL);
     char color[100];
     snprintf (color, sizeof (color), "%d %d %d", CONFIG_GRADIENT_COLORS[0].red, CONFIG_GRADIENT_COLORS[0].green, CONFIG_GRADIENT_COLORS[0].blue);
-    deadbeef->conf_set_str (CONFSTR_MS_COLOR_GRADIENT_00, color);
+    deadbeef->conf_set_str (CONFSTR_SP_COLOR_GRADIENT_00, color);
     snprintf (color, sizeof (color), "%d %d %d", CONFIG_GRADIENT_COLORS[1].red, CONFIG_GRADIENT_COLORS[1].green, CONFIG_GRADIENT_COLORS[1].blue);
-    deadbeef->conf_set_str (CONFSTR_MS_COLOR_GRADIENT_01, color);
+    deadbeef->conf_set_str (CONFSTR_SP_COLOR_GRADIENT_01, color);
     snprintf (color, sizeof (color), "%d %d %d", CONFIG_GRADIENT_COLORS[2].red, CONFIG_GRADIENT_COLORS[2].green, CONFIG_GRADIENT_COLORS[2].blue);
-    deadbeef->conf_set_str (CONFSTR_MS_COLOR_GRADIENT_02, color);
+    deadbeef->conf_set_str (CONFSTR_SP_COLOR_GRADIENT_02, color);
     snprintf (color, sizeof (color), "%d %d %d", CONFIG_GRADIENT_COLORS[3].red, CONFIG_GRADIENT_COLORS[3].green, CONFIG_GRADIENT_COLORS[3].blue);
-    deadbeef->conf_set_str (CONFSTR_MS_COLOR_GRADIENT_03, color);
+    deadbeef->conf_set_str (CONFSTR_SP_COLOR_GRADIENT_03, color);
     snprintf (color, sizeof (color), "%d %d %d", CONFIG_GRADIENT_COLORS[4].red, CONFIG_GRADIENT_COLORS[4].green, CONFIG_GRADIENT_COLORS[4].blue);
-    deadbeef->conf_set_str (CONFSTR_MS_COLOR_GRADIENT_04, color);
+    deadbeef->conf_set_str (CONFSTR_SP_COLOR_GRADIENT_04, color);
     snprintf (color, sizeof (color), "%d %d %d", CONFIG_GRADIENT_COLORS[5].red, CONFIG_GRADIENT_COLORS[5].green, CONFIG_GRADIENT_COLORS[5].blue);
-    deadbeef->conf_set_str (CONFSTR_MS_COLOR_GRADIENT_05, color);
+    deadbeef->conf_set_str (CONFSTR_SP_COLOR_GRADIENT_05, color);
     snprintf (color, sizeof (color), "%d %d %d", CONFIG_GRADIENT_COLORS[6].red, CONFIG_GRADIENT_COLORS[6].green, CONFIG_GRADIENT_COLORS[6].blue);
-    deadbeef->conf_set_str (CONFSTR_MS_COLOR_GRADIENT_06, color);
+    deadbeef->conf_set_str (CONFSTR_SP_COLOR_GRADIENT_06, color);
 }
 
 static void
 load_config (void)
 {
     deadbeef->conf_lock ();
-    CONFIG_LOG_SCALE = deadbeef->conf_get_int (CONFSTR_MS_LOG_SCALE,          1);
+    CONFIG_LOG_SCALE = deadbeef->conf_get_int (CONFSTR_SP_LOG_SCALE,                1);
+    CONFIG_REFRESH_INTERVAL = deadbeef->conf_get_int (CONFSTR_SP_REFRESH_INTERVAL, 25);
     const char *color;
-    color = deadbeef->conf_get_str_fast (CONFSTR_MS_COLOR_GRADIENT_00,        "65535 0 0");
+    color = deadbeef->conf_get_str_fast (CONFSTR_SP_COLOR_GRADIENT_00,        "65535 0 0");
     sscanf (color, "%hd %hd %hd", &(CONFIG_GRADIENT_COLORS[0].red), &(CONFIG_GRADIENT_COLORS[0].green), &(CONFIG_GRADIENT_COLORS[0].blue));
-    color = deadbeef->conf_get_str_fast (CONFSTR_MS_COLOR_GRADIENT_01,      "65535 32896 0");
+    color = deadbeef->conf_get_str_fast (CONFSTR_SP_COLOR_GRADIENT_01,      "65535 32896 0");
     sscanf (color, "%hd %hd %hd", &(CONFIG_GRADIENT_COLORS[1].red), &(CONFIG_GRADIENT_COLORS[1].green), &(CONFIG_GRADIENT_COLORS[1].blue));
-    color = deadbeef->conf_get_str_fast (CONFSTR_MS_COLOR_GRADIENT_02,      "65535 65535 0");
+    color = deadbeef->conf_get_str_fast (CONFSTR_SP_COLOR_GRADIENT_02,      "65535 65535 0");
     sscanf (color, "%hd %hd %hd", &(CONFIG_GRADIENT_COLORS[2].red), &(CONFIG_GRADIENT_COLORS[2].green), &(CONFIG_GRADIENT_COLORS[2].blue));
-    color = deadbeef->conf_get_str_fast (CONFSTR_MS_COLOR_GRADIENT_03,    "32896 65535 30840");
+    color = deadbeef->conf_get_str_fast (CONFSTR_SP_COLOR_GRADIENT_03,    "32896 65535 30840");
     sscanf (color, "%hd %hd %hd", &(CONFIG_GRADIENT_COLORS[3].red), &(CONFIG_GRADIENT_COLORS[3].green), &(CONFIG_GRADIENT_COLORS[3].blue));
-    color = deadbeef->conf_get_str_fast (CONFSTR_MS_COLOR_GRADIENT_04,      "0 38036 41120");
+    color = deadbeef->conf_get_str_fast (CONFSTR_SP_COLOR_GRADIENT_04,      "0 38036 41120");
     sscanf (color, "%hd %hd %hd", &(CONFIG_GRADIENT_COLORS[4].red), &(CONFIG_GRADIENT_COLORS[4].green), &(CONFIG_GRADIENT_COLORS[4].blue));
-    color = deadbeef->conf_get_str_fast (CONFSTR_MS_COLOR_GRADIENT_05,       "0 8224 25700");
+    color = deadbeef->conf_get_str_fast (CONFSTR_SP_COLOR_GRADIENT_05,       "0 8224 25700");
     sscanf (color, "%hd %hd %hd", &(CONFIG_GRADIENT_COLORS[5].red), &(CONFIG_GRADIENT_COLORS[5].green), &(CONFIG_GRADIENT_COLORS[5].blue));
-    color = deadbeef->conf_get_str_fast (CONFSTR_MS_COLOR_GRADIENT_06,       "0 0 0");
+    color = deadbeef->conf_get_str_fast (CONFSTR_SP_COLOR_GRADIENT_06,       "0 0 0");
     sscanf (color, "%hd %hd %hd", &(CONFIG_GRADIENT_COLORS[6].red), &(CONFIG_GRADIENT_COLORS[6].green), &(CONFIG_GRADIENT_COLORS[6].blue));
     deadbeef->conf_unlock ();
 }
@@ -718,6 +722,11 @@ spectrogram_message (ddb_gtkui_widget_t *widget, uint32_t id, uintptr_t ctx, uin
     switch (id) {
         case DB_EV_CONFIGCHANGED:
             on_config_changed (w, ctx);
+            if (w->drawtimer) {
+                g_source_remove (w->drawtimer);
+                w->drawtimer = 0;
+            }
+            w->drawtimer = g_timeout_add (CONFIG_REFRESH_INTERVAL, w_spectrogram_draw_cb, w);
             break;
     }
     return 0;
@@ -726,6 +735,7 @@ spectrogram_message (ddb_gtkui_widget_t *widget, uint32_t id, uintptr_t ctx, uin
 void
 w_spectrogram_init (ddb_gtkui_widget_t *w) {
     w_spectrogram_t *s = (w_spectrogram_t *)w;
+    load_config ();
     deadbeef->mutex_lock (s->mutex);
     s->samples = malloc (sizeof (double) * FFT_SIZE);
     memset (s->samples, 0, sizeof (double) * FFT_SIZE);
@@ -754,7 +764,7 @@ w_spectrogram_init (ddb_gtkui_widget_t *w) {
     s->out_complex = fftw_malloc (sizeof (fftw_complex) * FFT_SIZE);
     //s->p_r2r = fftw_plan_r2r_1d (FFT_SIZE, s->in, s->out_real, FFTW_R2HC, FFTW_ESTIMATE);
     s->p_r2c = fftw_plan_dft_r2c_1d (FFT_SIZE, s->in, s->out_complex, FFTW_ESTIMATE);
-    s->drawtimer = g_timeout_add (25, w_spectrogram_draw_cb, w);
+    s->drawtimer = g_timeout_add (CONFIG_REFRESH_INTERVAL, w_spectrogram_draw_cb, w);
     deadbeef->mutex_unlock (s->mutex);
 }
 
@@ -838,10 +848,9 @@ spectrogram_disconnect (void)
     return 0;
 }
 
-// static const char settings_dlg[] =
-//     "property \"Ignore files longer than x minutes "
-//                 "(-1 scans every file): \"          spinbtn[-1,9999,1] "      CONFSTR_WF_MAX_FILE_LENGTH        " 180 ;\n"
-// ;
+static const char settings_dlg[] =
+    "property \"Refresh interval (ms): \"          spinbtn[10,1000,1] "      CONFSTR_SP_REFRESH_INTERVAL        " 25 ;\n"
+;
 
 static DB_misc_t plugin = {
     //DB_PLUGIN_SET_API_VERSION
@@ -879,7 +888,7 @@ static DB_misc_t plugin = {
     .plugin.stop            = spectrogram_stop,
     .plugin.connect         = spectrogram_connect,
     .plugin.disconnect      = spectrogram_disconnect,
-    //.plugin.configdialog    = settings_dlg,
+    .plugin.configdialog    = settings_dlg,
 };
 
 #if !GTK_CHECK_VERSION(3,0,0)

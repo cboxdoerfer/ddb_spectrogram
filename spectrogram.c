@@ -35,6 +35,7 @@
 
 #define GRADIENT_TABLE_SIZE 2048
 #define FFT_SIZE 8192
+#define MAX_HEIGHT 4096
 
 #define     CONFSTR_MS_LOG_SCALE              "spectrogram.log_scale"
 #define     CONFSTR_MS_COLOR_GRADIENT_00      "spectrogram.color.gradient_00"
@@ -65,7 +66,10 @@ typedef struct {
     //fftw_plan p_r2r;
     uint32_t colors[GRADIENT_TABLE_SIZE];
     double *samples;
+    int *log_index;
     float samplerate;
+    int height;
+    int low_res_end;
     int resized;
     int buffered;
     intptr_t mutex;
@@ -468,6 +472,10 @@ w_spectrogram_destroy (ddb_gtkui_widget_t *w) {
         free (s->samples);
         s->samples = NULL;
     }
+    if (s->log_index) {
+        free (s->log_index);
+        s->log_index = NULL;
+    }
     //if (s->p_r2r) {
     //    fftw_destroy_plan (s->p_r2r);
     //}
@@ -548,12 +556,9 @@ spectrogram_get_value (gpointer user_data, int start, int end)
 }
 
 static inline float
-cosine_interpolate (float y1, float y2, float mu)
+linear_interpolate (float y1, float y2, float mu)
 {
-    float mu2;
-
-    mu2 = (1 - cos (mu * M_PI))/2;
-    return (y1 * (1 - mu2) + y2 * mu2);
+       return (y1 * (1 - mu) + y2 * mu);
 }
 
 static gboolean
@@ -571,12 +576,18 @@ spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
     height = a.height;
     int ratio = ftoi (FFT_SIZE/(a.height*2));
     ratio = CLAMP (ratio,0,1023);
-    float log_scale = (log2(w->samplerate/2)-log2(25.))/(a.height);
+    float log_scale = (log2f(w->samplerate/2)-log2f(25.))/(a.height);
     float freq_res = w->samplerate / FFT_SIZE;
 
-    int low_res_end = 0;
-    int *log_index = (int *)malloc (sizeof (int) * height);
-    memset (log_index, 0, sizeof (int) * height);
+    if (a.height != w->height) {
+        w->height = MIN (a.height, MAX_HEIGHT);
+        for (int i = 0; i < w->height; i++) {
+            w->log_index[i] = ftoi (powf(2.,((float)i) * log_scale + log2f(25.)) / freq_res);
+            if (i > 0 && w->log_index[i-1] == w->log_index [i]) {
+                w->low_res_end = i;
+            }
+        }
+    }
 
     // start drawing
     if (!w->surf || cairo_image_surface_get_width (w->surf) != a.width || cairo_image_surface_get_height (w->surf) != a.height) {
@@ -597,10 +608,6 @@ spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
 
     if (deadbeef->get_output ()->state () == OUTPUT_STATE_PLAYING) {
         for (int i = 0; i < a.height; i++) {
-            log_index[i] = ftoi (pow(2.,((float)i) * log_scale + log2(25.)) / freq_res);
-            if (i > 0 && log_index[i-1] == log_index [i]) {
-                low_res_end = i;
-            }
             // scrolling: move line i 1px to the left
             memmove (data + (i*stride), data + sizeof (uint32_t) + (i*stride), stride - sizeof (uint32_t));
         }
@@ -608,13 +615,12 @@ spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
         for (int i = 0; i < a.height; i++)
         {
             float f = 1.0;
-            int index0;
-            int index1;
+            int index0, index1;
             int bin0, bin1, bin2;
             if (CONFIG_LOG_SCALE) {
-                bin0 = log_index[CLAMP (i-1,0,height-1)];
-                bin1 = log_index[i];
-                bin2 = log_index[CLAMP (i+1,0,height-1)];
+                bin0 = w->log_index[CLAMP (i-1,0,height-1)];
+                bin1 = w->log_index[i];
+                bin2 = w->log_index[CLAMP (i+1,0,height-1)];
             }
             else {
                 bin0 = (i-1) * ratio;
@@ -629,31 +635,29 @@ spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
 
             index0 = CLAMP (index0,0,FFT_SIZE/2-1);
             index1 = CLAMP (index1,0,FFT_SIZE/2-1);
-            if (i == a.height - 1) {
-                f = w->data[index0];
-            }
-            else {
-                f = spectrogram_get_value (w, index0, index1);
-            }
 
-            int x = 10 * log10 (f);
+            f = spectrogram_get_value (w, index0, index1);
+            float x = 10 * log10f (f);
 
             // interpolate
-            if (i <= low_res_end && CONFIG_LOG_SCALE) {
+            if (i <= w->low_res_end && CONFIG_LOG_SCALE) {
                 int j = 0;
                 // find index of next value
-                while (i+j < height && log_index[i+j] == log_index[i]) {
+                while (i+j < height && w->log_index[i+j] == w->log_index[i]) {
                     j++;
                 }
                 float v0 = x;
-                float v1 = 10 * log10 (w->data[log_index[i+j]]);
+                float v1 = w->data[w->log_index[i+j]];
+                if (v1 != 0) {
+                    v1 = 10 * log10f (v1);
+                }
 
                 int k = 0;
-                while ((k+i) >= 0 && log_index[k+i] == log_index[i]) {
+                while ((k+i) >= 0 && w->log_index[k+i] == w->log_index[i]) {
                     j++;
                     k--;
                 }
-                x = ftoi (cosine_interpolate (v0,v1,(1.0/(j-1)) * ((-1) * (k+1))));
+                x = linear_interpolate (v0,v1,(1.0/(j-1)) * ((-1 * k) - 1));
             }
 
             // TODO: get rid of hardcoding 
@@ -672,10 +676,6 @@ spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
     cairo_fill (cr);
     cairo_restore (cr);
 
-    if (log_index) {
-        free (log_index);
-        log_index = NULL;
-    }
     return FALSE;
 }
 
@@ -735,13 +735,18 @@ w_spectrogram_init (ddb_gtkui_widget_t *w) {
         g_source_remove (s->drawtimer);
         s->drawtimer = 0;
     }
+    s->samplerate = 44100.0;
+    s->height = 0;
+    s->low_res_end = 0;
+    s->log_index = (int *)malloc (sizeof (int) * MAX_HEIGHT);
+    memset (s->log_index, 0, sizeof (int) * MAX_HEIGHT);
+
     for (int i = 0; i < FFT_SIZE; i++) {
         // Hanning
         //s->window[i] = (0.5 * (1 - cos (2 * M_PI * i/(FFT_SIZE-1))));
         // Blackman-Harris
         s->window[i] = 0.35875 - 0.48829 * cos(2 * M_PI * i /(FFT_SIZE)) + 0.14128 * cos(4 * M_PI * i/(FFT_SIZE)) - 0.01168 * cos(6 * M_PI * i/(FFT_SIZE));;
     }
-    s->samplerate = 44100.0;
     create_gradient_table (s, CONFIG_GRADIENT_COLORS, CONFIG_NUM_COLORS);
     s->in = fftw_malloc (sizeof (double) * FFT_SIZE);
     memset (s->in, 0, sizeof (double) * FFT_SIZE);
@@ -749,7 +754,7 @@ w_spectrogram_init (ddb_gtkui_widget_t *w) {
     s->out_complex = fftw_malloc (sizeof (fftw_complex) * FFT_SIZE);
     //s->p_r2r = fftw_plan_r2r_1d (FFT_SIZE, s->in, s->out_real, FFTW_R2HC, FFTW_ESTIMATE);
     s->p_r2c = fftw_plan_dft_r2c_1d (FFT_SIZE, s->in, s->out_complex, FFTW_ESTIMATE);
-    s->drawtimer = g_timeout_add (33, w_spectrogram_draw_cb, w);
+    s->drawtimer = g_timeout_add (25, w_spectrogram_draw_cb, w);
     deadbeef->mutex_unlock (s->mutex);
 }
 

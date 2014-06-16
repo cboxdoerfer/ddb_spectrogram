@@ -403,6 +403,65 @@ on_button_config (GtkMenuItem *menuitem, gpointer user_data)
     gtk_color_button_set_color (GTK_COLOR_BUTTON (color_gradient_05), &(CONFIG_GRADIENT_COLORS[5]));
     gtk_color_button_set_color (GTK_COLOR_BUTTON (color_gradient_06), &(CONFIG_GRADIENT_COLORS[6]));
 
+    switch (CONFIG_NUM_COLORS) {
+        case 1:
+            gtk_widget_hide (color_gradient_01);
+            gtk_widget_hide (color_gradient_02);
+            gtk_widget_hide (color_gradient_03);
+            gtk_widget_hide (color_gradient_04);
+            gtk_widget_hide (color_gradient_05);
+            gtk_widget_hide (color_gradient_06);
+            break;
+        case 2:
+            gtk_widget_show (color_gradient_01);
+            gtk_widget_hide (color_gradient_02);
+            gtk_widget_hide (color_gradient_03);
+            gtk_widget_hide (color_gradient_04);
+            gtk_widget_hide (color_gradient_05);
+            gtk_widget_hide (color_gradient_06);
+            break;
+        case 3:
+            gtk_widget_show (color_gradient_01);
+            gtk_widget_show (color_gradient_02);
+            gtk_widget_hide (color_gradient_03);
+            gtk_widget_hide (color_gradient_04);
+            gtk_widget_hide (color_gradient_05);
+            gtk_widget_hide (color_gradient_06);
+            break;
+        case 4:
+            gtk_widget_show (color_gradient_01);
+            gtk_widget_show (color_gradient_02);
+            gtk_widget_show (color_gradient_03);
+            gtk_widget_hide (color_gradient_04);
+            gtk_widget_hide (color_gradient_05);
+            gtk_widget_hide (color_gradient_06);
+            break;
+        case 5:
+            gtk_widget_show (color_gradient_01);
+            gtk_widget_show (color_gradient_02);
+            gtk_widget_show (color_gradient_03);
+            gtk_widget_show (color_gradient_04);
+            gtk_widget_hide (color_gradient_05);
+            gtk_widget_hide (color_gradient_06);
+            break;
+        case 6:
+            gtk_widget_show (color_gradient_01);
+            gtk_widget_show (color_gradient_02);
+            gtk_widget_show (color_gradient_03);
+            gtk_widget_show (color_gradient_04);
+            gtk_widget_show (color_gradient_05);
+            gtk_widget_hide (color_gradient_06);
+            break;
+        case 7:
+            gtk_widget_show (color_gradient_01);
+            gtk_widget_show (color_gradient_02);
+            gtk_widget_show (color_gradient_03);
+            gtk_widget_show (color_gradient_04);
+            gtk_widget_show (color_gradient_05);
+            gtk_widget_show (color_gradient_06);
+            break;
+    }
+
     for (;;) {
         int response = gtk_dialog_run (GTK_DIALOG (spectrogram_properties));
         if (response == GTK_RESPONSE_OK || response == GTK_RESPONSE_APPLY) {

@@ -40,6 +40,7 @@
 #define     CONFSTR_SP_LOG_SCALE              "spectrogram.log_scale"
 #define     CONFSTR_SP_REFRESH_INTERVAL       "spectrogram.refresh_interval"
 #define     CONFSTR_SP_DB_RANGE               "spectrogram.db_range"
+#define     CONFSTR_SP_NUM_COLORS             "spectrogram.num_colors"
 #define     CONFSTR_SP_COLOR_GRADIENT_00      "spectrogram.color.gradient_00"
 #define     CONFSTR_SP_COLOR_GRADIENT_01      "spectrogram.color.gradient_01"
 #define     CONFSTR_SP_COLOR_GRADIENT_02      "spectrogram.color.gradient_02"
@@ -90,6 +91,7 @@ save_config (void)
 {
     deadbeef->conf_set_int (CONFSTR_SP_LOG_SCALE, CONFIG_LOG_SCALE);
     deadbeef->conf_set_int (CONFSTR_SP_DB_RANGE, CONFIG_DB_RANGE);
+    deadbeef->conf_set_int (CONFSTR_SP_NUM_COLORS, CONFIG_NUM_COLORS);
     deadbeef->conf_set_int (CONFSTR_SP_REFRESH_INTERVAL, CONFIG_REFRESH_INTERVAL);
     char color[100];
     snprintf (color, sizeof (color), "%d %d %d", CONFIG_GRADIENT_COLORS[0].red, CONFIG_GRADIENT_COLORS[0].green, CONFIG_GRADIENT_COLORS[0].blue);
@@ -114,6 +116,7 @@ load_config (void)
     deadbeef->conf_lock ();
     CONFIG_LOG_SCALE = deadbeef->conf_get_int (CONFSTR_SP_LOG_SCALE,                1);
     CONFIG_DB_RANGE = deadbeef->conf_get_int (CONFSTR_SP_DB_RANGE,                 70);
+    CONFIG_NUM_COLORS = deadbeef->conf_get_int (CONFSTR_SP_NUM_COLORS,              7);
     CONFIG_REFRESH_INTERVAL = deadbeef->conf_get_int (CONFSTR_SP_REFRESH_INTERVAL, 25);
     const char *color;
     color = deadbeef->conf_get_str_fast (CONFSTR_SP_COLOR_GRADIENT_00,        "65535 0 0");

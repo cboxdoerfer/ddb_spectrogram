@@ -657,21 +657,24 @@ spectrogram_draw (GtkWidget *widget, cairo_t *cr, gpointer user_data) {
         return FALSE;
     }
 
-    do_fft (w);
     int width, height;
     width = a.width;
     height = a.height;
     int ratio = ftoi (FFT_SIZE/(a.height*2));
     ratio = CLAMP (ratio,0,1023);
-    float log_scale = (log2f(w->samplerate/2)-log2f(25.))/(a.height);
-    float freq_res = w->samplerate / FFT_SIZE;
 
-    if (a.height != w->height) {
-        w->height = MIN (a.height, MAX_HEIGHT);
-        for (int i = 0; i < w->height; i++) {
-            w->log_index[i] = ftoi (powf(2.,((float)i) * log_scale + log2f(25.)) / freq_res);
-            if (i > 0 && w->log_index[i-1] == w->log_index [i]) {
-                w->low_res_end = i;
+    if (deadbeef->get_output ()->state () == OUTPUT_STATE_PLAYING) {
+        do_fft (w);
+        float log_scale = (log2f(w->samplerate/2)-log2f(25.))/(a.height);
+        float freq_res = w->samplerate / FFT_SIZE;
+
+        if (a.height != w->height) {
+            w->height = MIN (a.height, MAX_HEIGHT);
+            for (int i = 0; i < w->height; i++) {
+                w->log_index[i] = ftoi (powf(2.,((float)i) * log_scale + log2f(25.)) / freq_res);
+                if (i > 0 && w->log_index[i-1] == w->log_index [i]) {
+                    w->low_res_end = i;
+                }
             }
         }
     }
@@ -797,6 +800,21 @@ spectrogram_button_release_event (GtkWidget *widget, GdkEventButton *event, gpoi
     return TRUE;
 }
 
+static gboolean
+spectrogram_set_refresh_interval (gpointer user_data, int interval)
+{
+    w_spectrogram_t *w = user_data;
+    if (!w || interval <= 0) {
+        return FALSE;
+    }
+    if (w->drawtimer) {
+        g_source_remove (w->drawtimer);
+        w->drawtimer = 0;
+    }
+    w->drawtimer = g_timeout_add (interval, w_spectrogram_draw_cb, w);
+    return TRUE;
+}
+
 static int
 spectrogram_message (ddb_gtkui_widget_t *widget, uint32_t id, uintptr_t ctx, uint32_t p1, uint32_t p2)
 {
@@ -805,11 +823,27 @@ spectrogram_message (ddb_gtkui_widget_t *widget, uint32_t id, uintptr_t ctx, uin
     switch (id) {
         case DB_EV_CONFIGCHANGED:
             on_config_changed (w, ctx);
+            spectrogram_set_refresh_interval (w, CONFIG_REFRESH_INTERVAL);
+            break;
+        case DB_EV_SONGSTARTED:
+            spectrogram_set_refresh_interval (w, CONFIG_REFRESH_INTERVAL);
+            break;
+        case DB_EV_PAUSED:
+            if (deadbeef->get_output ()->state () == OUTPUT_STATE_PLAYING) {
+                spectrogram_set_refresh_interval (w, CONFIG_REFRESH_INTERVAL);
+            }
+            else {
+                if (w->drawtimer) {
+                    g_source_remove (w->drawtimer);
+                    w->drawtimer = 0;
+                }
+            }
+            break;
+        case DB_EV_STOP:
             if (w->drawtimer) {
                 g_source_remove (w->drawtimer);
                 w->drawtimer = 0;
             }
-            w->drawtimer = g_timeout_add (CONFIG_REFRESH_INTERVAL, w_spectrogram_draw_cb, w);
             break;
     }
     return 0;
@@ -847,7 +881,7 @@ w_spectrogram_init (ddb_gtkui_widget_t *w) {
     s->out_complex = fftw_malloc (sizeof (fftw_complex) * FFT_SIZE);
     //s->p_r2r = fftw_plan_r2r_1d (FFT_SIZE, s->in, s->out_real, FFTW_R2HC, FFTW_ESTIMATE);
     s->p_r2c = fftw_plan_dft_r2c_1d (FFT_SIZE, s->in, s->out_complex, FFTW_ESTIMATE);
-    s->drawtimer = g_timeout_add (CONFIG_REFRESH_INTERVAL, w_spectrogram_draw_cb, w);
+    spectrogram_set_refresh_interval (s, CONFIG_REFRESH_INTERVAL);
     deadbeef->mutex_unlock (s->mutex);
 }
 
